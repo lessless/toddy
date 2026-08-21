@@ -1,0 +1,32 @@
+# The directory Mix will write compiled artifacts to.
+/_build/
+
+# If you run "mix test --cover", coverage assets end up here.
+/cover/
+
+# The directory Mix downloads your dependencies sources to.
+/deps/
+
+# Where third-party dependencies like ExDoc output generated docs.
+/doc/
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Ignore package tarball (built via "mix hex.build").
+toddy-*.tar
+
+# fnox-managed test/dev secrets (TG_API_ID, TG_API_HASH, etc.) — kept local
+# rather than committed, even though the values are age-encrypted.
+/fnox.toml
+
+# Zigler-generated staging copies of NIF source files, written alongside the
+# real source on every `mix compile`.
+lib/**/.Elixir.*.zig
+

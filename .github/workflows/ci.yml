@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit tests + formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20.2"
+          otp-version: "29.0"
+
+      - name: Install libtdjson (needed to compile the NIF, even for unit tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gperf zlib1g-dev libssl-dev
+          # TODO(research.md R3, R4): pin this to a specific verified commit SHA
+          # once one's confirmed (Constitution Principle IV). Discovered during
+          # implementation: distro-packaged TDLib builds can be old enough that
+          # Telegram's servers reject login with UPDATE_APP_TO_LOGIN, so this
+          # intentionally builds from source rather than an apt/homebrew package.
+          git clone --depth 1 https://github.com/tdlib/td.git /tmp/td
+          cmake -S /tmp/td -B /tmp/td/build -DCMAKE_BUILD_TYPE=Release -DTD_ENABLE_LTO=OFF
+          cmake --build /tmp/td/build --target tdjson -- -j"$(nproc)"
+          sudo cmake --install /tmp/td/build
+          sudo ldconfig
+
+      - name: Install Zig toolchain
+        uses: mlugg/setup-zig@v1
+        with:
+          version: "0.16.0"
+
+      - name: Restore deps/build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+
+      - run: mix deps.get
+      - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
+      - run: mix test
+
+  integration:
+    name: Integration tests (real libtdjson)
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20.2"
+          otp-version: "29.0"
+
+      - name: Install libtdjson
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gperf zlib1g-dev libssl-dev
+          # TODO(research.md R3, R4): pin this to a specific verified commit SHA
+          # once one's confirmed (Constitution Principle IV). Discovered during
+          # implementation: distro-packaged TDLib builds can be old enough that
+          # Telegram's servers reject login with UPDATE_APP_TO_LOGIN, so this
+          # intentionally builds from source rather than an apt/homebrew package.
+          git clone --depth 1 https://github.com/tdlib/td.git /tmp/td
+          cmake -S /tmp/td -B /tmp/td/build -DCMAKE_BUILD_TYPE=Release -DTD_ENABLE_LTO=OFF
+          cmake --build /tmp/td/build --target tdjson -- -j"$(nproc)"
+          sudo cmake --install /tmp/td/build
+          sudo ldconfig
+
+      - name: Install Zig toolchain
+        uses: mlugg/setup-zig@v1
+        with:
+          version: "0.16.0"
+
+      - run: mix deps.get
+
+      # Only the non-credentialed portion of the integration suite runs in
+      # CI (Constitution Principle III) — the tests gated on TG_API_ID /
+      # TG_API_HASH / TG_TEST_PHONE / TG_TEST_CODE / TG_TEST_GROUP need a
+      # live Telegram login and are skipped here by design (see README).
+      - run: mix test --include integration
