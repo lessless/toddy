@@ -1,18 +1,16 @@
 <!--
 Sync Impact Report
-- Version change: [TEMPLATE] → 1.0.0 (initial ratification)
-- Modified principles: n/a (first concrete adoption; all five slots filled for the first time)
-  - [PRINCIPLE_1_NAME] → I. NIF Safety & BEAM Stability (NON-NEGOTIABLE)
-  - [PRINCIPLE_2_NAME] → II. Idiomatic Elixir Surface
-  - [PRINCIPLE_3_NAME] → III. Verify Against Real TDLib (Integration-Test-First)
-  - [PRINCIPLE_4_NAME] → IV. Reproducible Native Builds
-  - [PRINCIPLE_5_NAME] → V. Track TDLib Compatibility via Semver
-- Added sections: Technology & Native Dependencies; Development Workflow; Governance (amendment
-  procedure, versioning policy, compliance review)
+- Version change: 1.1.0 → 1.2.0
+- Modified principles: none renamed or redefined
+- Added principles:
+  - VII. Domain-Oriented Observability (Domain Probes) (new)
+- Added sections: none (principle added within existing Core Principles section)
+- Expanded sections: Development Workflow — added a PR-justification rule enforcing
+  Principle VII (direct logging/metrics/telemetry calls from domain code)
 - Removed sections: none
-- Templates requiring follow-up: none checked in this run (scope of this command is the
-  constitution file only; dependent templates/commands read this file at runtime)
-- Deferred placeholders: none — RATIFICATION_DATE set to the date of this initial adoption
+- Templates requiring follow-up: none checked in this run (scope of this command is
+  the constitution file only; dependent templates/commands read this file at runtime)
+- Deferred placeholders: none
 -->
 
 # Toddy Constitution
@@ -59,6 +57,30 @@ as a result).
 Rationale: consumers pin this library expecting stability; upstream TDLib churn must
 never silently become an undocumented breaking change downstream.
 
+### VI. Elixir-First, Minimal Native Surface
+As much of the system's logic as possible MUST live in Elixir. The Zig/Zigler layer
+MUST be kept as thin as possible — limited to marshaling data across the FFI boundary
+(encoding requests for `td` and decoding its responses/updates) rather than containing
+parsing, validation, business logic, orchestration, retries, or rate-limit handling,
+all of which MUST be implemented in Elixir instead.
+Rationale: Zig code sits below the BEAM's safety net (Principle I) and is harder to
+test, debug, and reason about than Elixir; keeping it minimal shrinks the surface area
+where a mistake can crash the VM and keeps the bulk of the system testable with
+ordinary Elixir tooling.
+
+### VII. Domain-Oriented Observability (Domain Probes)
+Domain/business-logic code MUST NOT call logging, metrics, or telemetry libraries
+directly. It MUST instead call semantically-named "probe" functions or modules named
+after business events (e.g. `session_authenticated`, `group_not_found`,
+`download_started`, `download_completed`, `download_failed`, `rate_limited`) that
+encapsulate the actual instrumentation technology behind them.
+Rationale: this keeps domain code readable in the language of the domain instead of
+littered with logging/metrics calls, keeps the underlying instrumentation technology
+swappable and centralized in one place, and makes observability behavior independently
+testable — asserting that the right domain events fired, rather than that a specific
+log line was printed. It complements Principle VI: probes are domain-facing Elixir
+code, not something that belongs in the Zig layer.
+
 ## Technology & Native Dependencies
 
 Elixir/OTP is the host language; Zig, invoked through Zigler, provides the native
@@ -76,8 +98,16 @@ and the integration test suite against a real TDLib build before a change is mer
 Formatting checks (`mix format` for Elixir, `zig fmt` for Zig) MUST pass. Changes that
 weaken NIF Safety (Principle I) or bypass real-TDLib verification (Principle III) MUST
 NOT be merged regardless of urgency, without an explicit, documented exception approved
-by the project maintainer.
-When implementing follow full TDD cycle governed by Kent Beck  Simple Design rules
+by the project maintainer. Changes that add Zig/native code where the same logic could
+reasonably live in Elixir instead MUST justify that choice in the PR description
+(Principle VI). Changes that call logging, metrics, or telemetry libraries directly
+from domain code, bypassing a domain probe, MUST justify that choice in the PR
+description (Principle VII).
+
+Implementation MUST follow a full test-driven development cycle (red-green-refactor),
+guided by Kent Beck's Simple Design rules, rather than writing implementation code
+ahead of a failing test.
+
 ## Governance
 
 This constitution supersedes all other project practices and conventions. Amendments
@@ -95,4 +125,4 @@ Versioning policy (semantic versioning applied to this document):
 Compliance is reviewed at each PR touching the FFI boundary, native build configuration,
 or the public API, and revisited whenever TDLib is upgraded to a new pinned version.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-21 | **Last Amended**: 2026-08-21
+**Version**: 1.2.0 | **Ratified**: 2026-08-21 | **Last Amended**: 2026-08-21
