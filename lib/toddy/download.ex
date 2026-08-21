@@ -40,7 +40,6 @@ defmodule Toddy.Download do
   `download.status`/`download.error` rather than pattern-matching on the
   outer tuple.
   """
-  @spec fetch(GenServer.server(), Message.t(), String.t()) :: {:ok, t()}
   def fetch(session, %Message{media: %MediaItem{} = media}, destination_path) do
     if already_downloaded?(media, destination_path) do
       {:ok, completed(media, destination_path)}
@@ -56,7 +55,6 @@ defmodule Toddy.Download do
   `remote_file_id`), continuing past individual failures rather than
   aborting the batch (FR-010, FR-011).
   """
-  @spec fetch_all(GenServer.server(), [Message.t()], String.t()) :: [t()]
   def fetch_all(session, messages, destination_dir) do
     Enum.map(messages, fn %Message{media: media} = message ->
       destination_path = Path.join(destination_dir, media.file_name || media.remote_file_id)
@@ -66,7 +64,6 @@ defmodule Toddy.Download do
   end
 
   @doc "Accessor for a `Toddy.Download`'s current status."
-  @spec status(t()) :: status()
   def status(%__MODULE__{status: status}), do: status
 
   # Internal: dedup, keyed on (remote_file_id, destination_path) per FR-007 —

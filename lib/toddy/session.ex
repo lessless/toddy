@@ -28,14 +28,11 @@ defmodule Toddy.Session do
   Required opts: `:phone_number`, `:session_dir`, `:api_id`, `:api_hash`
   (research.md R10). Accepts standard `GenServer.start_link/3` options too.
   """
-  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
 
   @doc "Returns the current authentication state."
-  @spec status(GenServer.server()) ::
-          :unauthenticated | :wait_code | :wait_password | :ready | :closed
   def status(session), do: GenServer.call(session, :status)
 
   @doc """
@@ -43,7 +40,6 @@ defmodule Toddy.Session do
   Returns `{:error, :unexpected_state}` if called at any other time, or
   `{:error, :invalid_code}` if TDLib rejects the code itself.
   """
-  @spec submit_code(GenServer.server(), String.t()) :: :ok | {:error, atom()}
   def submit_code(session, code), do: GenServer.call(session, {:submit_code, code})
 
   @doc """
@@ -51,7 +47,6 @@ defmodule Toddy.Session do
   Returns `{:error, :unexpected_state}` if called at any other time, or
   `{:error, :invalid_password}` if TDLib rejects the password itself.
   """
-  @spec submit_password(GenServer.server(), String.t()) :: :ok | {:error, atom()}
   def submit_password(session, password),
     do: GenServer.call(session, {:submit_password, password})
 
@@ -60,7 +55,6 @@ defmodule Toddy.Session do
   response. Used internally by `Toddy.Group` and `Toddy.Download`; not part
   of the consumer-facing contract in contracts/toddy_api.md.
   """
-  @spec request(GenServer.server(), map(), timeout()) :: map()
   def request(session, request_map, timeout \\ 30_000) do
     GenServer.call(session, {:request, request_map}, timeout)
   end
@@ -74,7 +68,6 @@ defmodule Toddy.Session do
   `downloadFile` rather than polling `updateFile` pushes — but it's the
   extension point for anything that does.
   """
-  @spec subscribe(GenServer.server()) :: :ok
   def subscribe(session), do: GenServer.call(session, {:subscribe, self()})
 
   # Server callbacks
@@ -185,8 +178,6 @@ defmodule Toddy.Session do
     :ok
   end
 
-  # Internal: the dedicated receive-loop process (research.md R5)
-
   defp receive_loop(parent, native, handle) do
     case native.receive(handle, @receive_timeout_seconds) do
       nil -> :ok
@@ -195,8 +186,6 @@ defmodule Toddy.Session do
 
     receive_loop(parent, native, handle)
   end
-
-  # Internal: request/response correlation (research.md R5)
 
   defp send_correlated(request_map, from, state, transform) do
     {:noreply, dispatch_request(request_map, from, transform, state)}
@@ -378,7 +367,6 @@ defmodule Toddy.Session do
 
   defp handle_auth_update(_other, state), do: {:noreply, state}
 
-  # File permission enforcement (FR-002, research.md R6)
   defp enforce_session_permissions(session_dir) do
     session_dir
     |> File.ls!()

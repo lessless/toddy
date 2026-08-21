@@ -24,8 +24,6 @@ defmodule Toddy.Group do
   is implicit — a chat that isn't a basic group or supergroup the account
   belongs to returns `{:error, :group_not_found}`, never an empty result.
   """
-  @spec find(GenServer.server(), integer() | String.t()) ::
-          {:ok, Toddy.Group.t()} | {:error, :group_not_found}
   def find(session, identifier) do
     case find_in_chat_list(session, identifier) do
       {:ok, group} ->
@@ -42,7 +40,6 @@ defmodule Toddy.Group do
   no live/streaming mode) that carries a photo, video, document, or
   audio/voice attachment.
   """
-  @spec list_media(GenServer.server(), Toddy.Group.t()) :: {:ok, [Message.t()]}
   def list_media(session, %__MODULE__{id: chat_id}) do
     {:ok, paginate_history(session, chat_id, 0, [], @max_history_pages)}
   end
@@ -90,8 +87,6 @@ defmodule Toddy.Group do
   defp group_match?(_chat, _identifier), do: false
 
   defp to_group(%{"id" => id, "title" => title}), do: %__MODULE__{id: id, title: title}
-
-  # Internal: media discovery via getChatHistory pagination (research.md R7)
 
   defp paginate_history(_session, _chat_id, _from_id, acc, 0), do: acc
 
