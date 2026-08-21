@@ -56,6 +56,18 @@ rejected for this minimal wrapper: it adds artifact-hosting and a cross-platform
 matrix the spec does not call for; revisit only if manual `libtdjson` setup proves to
 be a real adoption blocker.
 
+**Addendum (discovered during implementation)**: Homebrew's `tdlib` stable formula
+(1.8.0) compiled and linked correctly, but Telegram's live servers rejected the login
+handshake with `UPDATE_APP_TO_LOGIN` (error 406) — the build's protocol layer was old
+enough that Telegram refuses new logins with it entirely, independent of account
+credentials. A `brew install tdlib --HEAD` (built from a current `tdlib/td` commit)
+was required to get a login-capable build. This sharpens the "pin an exact commit SHA"
+guidance above: the pin needs periodic refreshing to stay ahead of Telegram's
+protocol-layer cutoff, not just picked once and left alone — a distro/package-manager
+"stable" release is not a safe default assumption for this specific dependency. CI
+(`.github/workflows/ci.yml`) builds from source accordingly rather than an apt/brew
+package.
+
 ## R4. TDLib interface: JSON client vs. raw C++ `Client`
 
 **Decision**: Use TDLib's JSON interface (`td_json_client_create`, `_send`,
@@ -70,6 +82,14 @@ in Elixir as plain maps/structs decoded with `Jason`.
 **Alternatives considered**: Wrapping the raw C++ `Client` class — rejected: it would
 require a C++ shim and push substantial TDLib-object-model logic into native code,
 directly conflicting with Principles I and VI.
+
+**Note**: `td_json_client.h` documents this interface as legacy — "will be removed in
+TDLib 2.0.0" — in favor of a newer `td_create_client_id`/`td_send`/`td_receive`/
+`td_execute` interface (integer client ids, process-wide receive/execute rather than
+per-client). Still fully present and functional in the TDLib versions this project
+targets; noted here so a future migration isn't a surprise, not acted on now since it
+would invalidate no small amount of already-implemented, working code for no current
+benefit.
 
 ## R5. Request/response correlation
 
@@ -126,20 +146,26 @@ avoids multiple filter-specific request types.
 
 ## R8. Downloading media to a caller-specified destination (FR-006, FR-008)
 
-**Decision**: For each selected media item, call `downloadFile`, then wait for the
-`updateFile` push(es) reporting that file's `local.is_downloading_completed` flag,
-then copy the completed file from TDLib's own file-storage path to the caller-supplied
-destination, then compare the copied file's size on disk against the media item's
-reported `size` (FR-008) before marking the `Download` as `:completed`.
+**Decision (revised during implementation)**: For each selected media item, call
+`downloadFile` with `"synchronous": true` — the request itself blocks until the
+download completes and returns the finished `file` object directly (`local.path`,
+`local.is_downloading_completed`) as the correlated response — then copy that file
+from TDLib's own storage path to the caller-supplied destination, then compare the
+copied file's size on disk against the media item's reported `size` (FR-008) before
+marking the `Download` as `:completed`.
 
 **Rationale**: TDLib downloads into files it manages by internal file ID, not an
-arbitrary caller path; a copy step is required regardless of interface choice. Waiting
-on `updateFile` (rather than polling `getFile`) reuses the same update-dispatch path
-already built for R5.
+arbitrary caller path; a copy step is required regardless of interface choice.
+`synchronous: true` reuses the request/response correlation engine (R5) directly —
+no separate `updateFile` subscription/dispatch bookkeeping needed, which is simpler
+for the same guarantee. (`Toddy.Session.subscribe/1` from R5 is kept as generic
+foundational infrastructure — e.g. for a future feature — but no current user story
+needs it.)
 
-**Alternatives considered**: Polling `getFile` in a loop — rejected: `updateFile`
-push notifications already exist on the update channel every consumer needs to handle
-that flood-wait detection (R9) requires; polling would be redundant.
+**Alternatives considered**: (a) Non-blocking `downloadFile` + waiting for `updateFile`
+push(es) — the original plan; rejected on implementation because synchronous mode
+achieves the identical outcome with substantially less state to manage. (b) Polling
+`getFile` in a loop — rejected: redundant with either of the above.
 
 ## R9. Detecting and honoring flood-wait (FR-013)
 
