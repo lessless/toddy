@@ -142,18 +142,23 @@ distinguishably without aborting the rest of the batch (US3 acceptance scenario 
 - [X] T035 [P] Add a CI workflow running `mix test` (unit) and a separate `mix test --only integration` job against a built `libtdjson` in `.github/workflows/ci.yml` (Constitution Principle III, Development Workflow) (depends on T019, T024, T032)
 - [X] T036 [P] Expand `README.md` with the full `quickstart.md` walkthrough (depends on T005)
 - [ ] T037 Run `quickstart.md` end-to-end against a real test account and confirm all three steps' expected outcomes (depends on T033)
-  - **Status**: partially unblocked. Step 1 (authenticate) is now confirmed working against
-    live Telegram infrastructure — `Toddy.Session` reaches `:wait_code` with real credentials.
-    Getting here required finding and fixing three real bugs, not guesses (see research.md
-    R3/R4/R8 addenda): `setTdlibParameters`'s nested-vs-flat field structure changed between
-    TDLib versions (the actual root cause of the `"Valid api_id must be provided"` failures —
-    not a credential problem, confirmed by reproducing it with a well-known non-secret
-    `api_id` too), a missing `authorizationStateWaitEncryptionKey` handler, and Homebrew's
-    stable `tdlib` package being too old for Telegram's servers to accept login from at all.
-    Now pinned to a verified working commit (`022d602`, see README/CI).
-    Steps 2–3 (find group, download media) still need `TG_TEST_CODE` (the live login code,
-    supplied per-run — see README) and `TG_TEST_GROUP` (a real group you're in) to exercise
-    against live data: `TG_TEST_CODE=<code> fnox exec -- mix test --include integration`.
+  - **Status**: Step 1 (authenticate) fully verified live — real phone number, real
+    verification code, real Telegram servers. `Toddy.Session` reaches `:ready`, and a
+    fresh reconnect against the same session_dir goes straight to `:ready` with zero
+    re-auth prompts (SC-001, SC-002 confirmed), with FR-002 permissions (0700 dir /
+    0600 files) verified on the real session directory. Getting here required finding
+    and fixing three real bugs, not guesses (see research.md R3/R4/R8 addenda):
+    `setTdlibParameters`'s nested-vs-flat field structure changed between TDLib
+    versions (the actual root cause of the earlier `"Valid api_id must be provided"`
+    failures — not a credential problem, confirmed by reproducing it with a
+    well-known non-secret `api_id` too), a missing `authorizationStateWaitEncryptionKey`
+    handler, and Homebrew's stable `tdlib` package being too old for Telegram's
+    servers to accept login from at all. Now pinned to a verified working commit
+    (`022d602`, see README/CI). Also confirmed empirically: each fresh session_dir
+    triggers a brand-new phone-number submission, which invalidates any
+    previously-sent code — reconnecting to the *same* session_dir does not.
+    Steps 2–3 (find group, download media) still need `TG_TEST_GROUP` (a real group
+    you're in, with at least one media message) to exercise against live data.
 - [X] T038 [P] Verify `mix format` and `zig fmt` pass cleanly across the codebase (Constitution Development Workflow) (depends on T033)
 
 ---
