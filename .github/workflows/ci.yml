@@ -21,12 +21,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake gperf zlib1g-dev libssl-dev
-          # TODO(research.md R3, R4): pin this to a specific verified commit SHA
-          # once one's confirmed (Constitution Principle IV). Discovered during
-          # implementation: distro-packaged TDLib builds can be old enough that
-          # Telegram's servers reject login with UPDATE_APP_TO_LOGIN, so this
-          # intentionally builds from source rather than an apt/homebrew package.
-          git clone --depth 1 https://github.com/tdlib/td.git /tmp/td
+          # Pinned per Constitution Principle IV / research.md R3 — verified working
+          # through authorizationStateWaitCode against live Telegram infrastructure.
+          # Distro/package-manager "stable" builds can be old enough that Telegram
+          # rejects login (UPDATE_APP_TO_LOGIN); unpinned HEAD builds can silently
+          # change setTdlibParameters's wire format out from under us (see R3's
+          # second addendum) — so this intentionally builds from source at an exact
+          # commit rather than an apt/homebrew package or a moving branch tip.
+          git clone https://github.com/tdlib/td.git /tmp/td
+          git -C /tmp/td checkout 022d60202e446ad1287b9fb68e687c8a0760788b
           cmake -S /tmp/td -B /tmp/td/build -DCMAKE_BUILD_TYPE=Release -DTD_ENABLE_LTO=OFF
           cmake --build /tmp/td/build --target tdjson -- -j"$(nproc)"
           sudo cmake --install /tmp/td/build
@@ -66,12 +69,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake gperf zlib1g-dev libssl-dev
-          # TODO(research.md R3, R4): pin this to a specific verified commit SHA
-          # once one's confirmed (Constitution Principle IV). Discovered during
-          # implementation: distro-packaged TDLib builds can be old enough that
-          # Telegram's servers reject login with UPDATE_APP_TO_LOGIN, so this
-          # intentionally builds from source rather than an apt/homebrew package.
-          git clone --depth 1 https://github.com/tdlib/td.git /tmp/td
+          # Pinned per Constitution Principle IV / research.md R3 — verified working
+          # through authorizationStateWaitCode against live Telegram infrastructure.
+          # Distro/package-manager "stable" builds can be old enough that Telegram
+          # rejects login (UPDATE_APP_TO_LOGIN); unpinned HEAD builds can silently
+          # change setTdlibParameters's wire format out from under us (see R3's
+          # second addendum) — so this intentionally builds from source at an exact
+          # commit rather than an apt/homebrew package or a moving branch tip.
+          git clone https://github.com/tdlib/td.git /tmp/td
+          git -C /tmp/td checkout 022d60202e446ad1287b9fb68e687c8a0760788b
           cmake -S /tmp/td -B /tmp/td/build -DCMAKE_BUILD_TYPE=Release -DTD_ENABLE_LTO=OFF
           cmake --build /tmp/td/build --target tdjson -- -j"$(nproc)"
           sudo cmake --install /tmp/td/build

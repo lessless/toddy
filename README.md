@@ -16,12 +16,25 @@ Toddy links against TDLib's JSON-interface shared library at compile time via
 `pkg-config`. Install it before running `mix compile`:
 
 ```sh
-# macOS
-brew install tdlib
+# macOS — use --HEAD, not the stable formula (see warning below)
+brew install tdlib --HEAD
 
 # Debian/Ubuntu — no official package; build from source and ensure the
 # resulting libtdjson.pc is on PKG_CONFIG_PATH. See https://github.com/tdlib/td#building
 ```
+
+> [!WARNING]
+> Don't use a distro/package-manager "stable" TDLib build here. Homebrew's
+> stable formula (1.8.0) both gets rejected by Telegram's live servers
+> (`UPDATE_APP_TO_LOGIN` — its protocol layer is too old) *and*, on some
+> versions, uses a different wire format for `setTdlibParameters` than
+> current TDLib does (see research.md R3's addenda for the full story — this
+> cost real debugging time). CI and this project's own testing are verified
+> against `tdlib/td` commit `022d60202e446ad1287b9fb68e687c8a0760788b`
+> specifically; building from a different recent commit is likely fine, but
+> if login gets stuck at `:unauthenticated` or fails with a confusing
+> `"Valid api_id must be provided"` error even with a known-good `api_id`,
+> that commit is a known-working fallback to pin to.
 
 Verify it's discoverable:
 

@@ -68,6 +68,29 @@ protocol-layer cutoff, not just picked once and left alone — a distro/package-
 (`.github/workflows/ci.yml`) builds from source accordingly rather than an apt/brew
 package.
 
+**Second addendum — pin to a verified commit (this is the resolution, not a new
+problem)**: unpinned `--HEAD` immediately bit us — the very next commit past 1.8.0
+(`022d602`, "Update version to 1.8.66") had *removed the `tdlibParameters` composite
+type from `td_api.tl` entirely*, flattening `setTdlibParameters`'s fields directly
+onto the request. Our code (correctly, for 1.8.0) nested those fields under a
+`"parameters"` key; against `022d602` that nested object is simply an unrecognized
+field, so every real field — including `api_id` — silently defaults to its zero value,
+surfacing as TDLib's generic `"Valid api_id must be provided"` (a message that reads
+like a credential problem but was actually a wire-format mismatch). Confirmed via the
+build's own `td_api.tl` schema (`tdlibParameters` has zero occurrences in `022d602`,
+vs. the nested type present in 1.8.0) and reproduced with a well-known non-secret
+`api_id` (94575) to rule out anything credential-specific. Fixed by sending the fields
+flat (`lib/toddy/session.ex`), matching `022d602`'s actual schema.
+
+This is exactly the scenario R3's "pin an exact commit SHA" guidance exists for — the
+wire format for this one request has now been observed to differ across three
+adjacent points in TDLib's history (bare fields → wrapped in `parameters` → bare
+fields again), so an unpinned build is not just a login-layer risk but a silent
+protocol-shape risk. **Pinned commit: `022d602` (tdlib/td), verified working through
+`authorizationStateWaitCode` against live Telegram infrastructure.** `.github/workflows/ci.yml`
+still clones the default branch rather than this SHA — updating that to pin explicitly
+is recommended follow-up, now that a concretely-verified commit exists to pin to.
+
 ## R4. TDLib interface: JSON client vs. raw C++ `Client`
 
 **Decision**: Use TDLib's JSON interface (`td_json_client_create`, `_send`,

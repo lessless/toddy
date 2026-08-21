@@ -55,9 +55,7 @@ defmodule Toddy.SessionTest do
 
     push(session, auth_update("authorizationStateWaitTdlibParameters"))
 
-    assert_receive {:native_send,
-                    %{"@type" => "setTdlibParameters", "parameters" => %{"api_id" => 1}}},
-                   1000
+    assert_receive {:native_send, %{"@type" => "setTdlibParameters", "api_id" => 1}}, 1000
 
     push(session, auth_update("authorizationStateWaitPhoneNumber"))
 

@@ -142,13 +142,18 @@ distinguishably without aborting the rest of the batch (US3 acceptance scenario 
 - [X] T035 [P] Add a CI workflow running `mix test` (unit) and a separate `mix test --only integration` job against a built `libtdjson` in `.github/workflows/ci.yml` (Constitution Principle III, Development Workflow) (depends on T019, T024, T032)
 - [X] T036 [P] Expand `README.md` with the full `quickstart.md` walkthrough (depends on T005)
 - [ ] T037 Run `quickstart.md` end-to-end against a real test account and confirm all three steps' expected outcomes (depends on T033)
-  - **Status**: blocked, not skipped. The auth handshake through `setAuthenticationPhoneNumber`
-    is confirmed working against live Telegram infrastructure (found and fixed two real API
-    bugs along the way — see research.md R3/R4/R8 addenda), but the currently-configured
-    `TG_API_ID` is being rejected by TDLib itself ("Valid api_id must be provided") before a
-    real login can complete, so steps 2–3 of quickstart.md are unverified against live data.
-    Re-run `fnox exec -- mix test --include integration` (or `fnox exec -- mix run` a
-    quickstart script) after confirming `TG_API_ID`/`TG_API_HASH` at https://my.telegram.org.
+  - **Status**: partially unblocked. Step 1 (authenticate) is now confirmed working against
+    live Telegram infrastructure — `Toddy.Session` reaches `:wait_code` with real credentials.
+    Getting here required finding and fixing three real bugs, not guesses (see research.md
+    R3/R4/R8 addenda): `setTdlibParameters`'s nested-vs-flat field structure changed between
+    TDLib versions (the actual root cause of the `"Valid api_id must be provided"` failures —
+    not a credential problem, confirmed by reproducing it with a well-known non-secret
+    `api_id` too), a missing `authorizationStateWaitEncryptionKey` handler, and Homebrew's
+    stable `tdlib` package being too old for Telegram's servers to accept login from at all.
+    Now pinned to a verified working commit (`022d602`, see README/CI).
+    Steps 2–3 (find group, download media) still need `TG_TEST_CODE` (the live login code,
+    supplied per-run — see README) and `TG_TEST_GROUP` (a real group you're in) to exercise
+    against live data: `TG_TEST_CODE=<code> fnox exec -- mix test --include integration`.
 - [X] T038 [P] Verify `mix format` and `zig fmt` pass cleanly across the codebase (Constitution Development Workflow) (depends on T033)
 
 ---

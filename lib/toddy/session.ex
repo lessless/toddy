@@ -213,10 +213,6 @@ defmodule Toddy.Session do
     }
   end
 
-  defp nest_as_parameters(%{"@type" => type} = fields) do
-    %{"@type" => type, "parameters" => Map.delete(fields, "@type")}
-  end
-
   defp fire_and_forget(request_map, state) do
     extra = generate_extra()
     state.native.send(state.handle, Jason.encode!(Map.put(request_map, "@extra", extra)))
@@ -338,8 +334,7 @@ defmodule Toddy.Session do
           "system_language_code" => "en",
           "device_model" => "Toddy",
           "application_version" => "0.1.0"
-        }
-        |> nest_as_parameters(),
+        },
         state
       )
 
