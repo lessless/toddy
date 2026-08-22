@@ -7,7 +7,7 @@ defmodule Toddy.SessionTest do
   """
   use ExUnit.Case, async: false
   import Mox
-  import ExUnit.CaptureLog
+  import Toddy.SpanCase
 
   alias Toddy.Native.Mock
   alias Toddy.Session
@@ -89,17 +89,17 @@ defmodule Toddy.SessionTest do
     push(session, %{"@type" => "ok", "@extra" => req2["@extra"]})
     assert Task.await(task2) == :ok
 
-    log =
-      capture_log(fn ->
+    [span] =
+      capture_spans(fn ->
         push(session, auth_update("authorizationStateReady"))
         Process.sleep(20)
       end)
 
     assert Session.status(session) == :ready
-    assert log =~ "toddy.wide_event event=session_authenticate"
-    assert log =~ "outcome=ready"
-    assert log =~ "authorizationStateWaitCode"
-    assert log =~ "authorizationStateWaitPassword"
+    assert span.name == :session_authenticate
+    assert span.attributes[:outcome] == :ready
+    assert "authorizationStateWaitCode" in span.attributes[:auth_states_visited]
+    assert "authorizationStateWaitPassword" in span.attributes[:auth_states_visited]
     assert File.stat!(Path.join(dir, "fake_session.db")).mode |> rem(0o1000) == 0o600
   end
 
@@ -198,17 +198,17 @@ defmodule Toddy.SessionTest do
     push(session, auth_update("authorizationStateWaitTdlibParameters"))
     Process.sleep(20)
 
-    log =
-      capture_log(fn ->
+    [span] =
+      capture_spans(fn ->
         push(session, auth_update("authorizationStateReady"))
         Process.sleep(20)
       end)
 
-    assert log =~ "toddy.wide_event event=session_authenticate"
-    assert log =~ "outcome=ready"
-    assert log =~ ~s(request_type: "setTdlibParameters")
-    assert log =~ "code: 400"
-    assert log =~ ~s(message: "boom")
+    assert span.name == :session_authenticate
+    assert span.attributes[:outcome] == :ready
+
+    assert span.attributes[:auth_step_failures] ==
+             Jason.encode!([%{request_type: "setTdlibParameters", code: 400, message: "boom"}])
   end
 
   test "reaching :closed without ever becoming :ready is its own wide-event outcome" do
@@ -232,15 +232,15 @@ defmodule Toddy.SessionTest do
         native: Mock
       )
 
-    log =
-      capture_log(fn ->
+    [span] =
+      capture_spans(fn ->
         push(session, auth_update("authorizationStateWaitCode"))
         push(session, auth_update("authorizationStateClosed"))
         Process.sleep(20)
       end)
 
     assert Session.status(session) == :closed
-    assert log =~ "toddy.wide_event event=session_authenticate"
-    assert log =~ "outcome=closed"
+    assert span.name == :session_authenticate
+    assert span.attributes[:outcome] == :closed
   end
 end

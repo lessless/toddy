@@ -156,18 +156,29 @@ out Telegram's flood-wait rate limiting rather than failing.
 ## Observability
 
 Every operation (authenticate, find a group, list its media, download one file,
-download a batch) emits exactly one consolidated log line — a
+download a batch) emits exactly one consolidated
 ["wide event"](https://jeremymorrell.dev/blog/a-practitioners-guide-to-wide-events/)
-— rather than several scattered ones, at `Logger.info`/`Logger.warning` depending on
-outcome. All of them start with `toddy.wide_event`, so they're one `grep` away from
-the rest of your application's logs:
+— rather than several scattered log lines — as an OpenTelemetry span, via the
+lightweight `opentelemetry_api` package. Every field collected during the
+operation (identifiers, outcome, counts, failure reasons, etc.) is set as a
+span attribute, and a failure-ish outcome (`:failed`, `:not_found`,
+`:partial_failure`) sets an error span status. Span names: `session_authenticate`,
+`group_find`, `group_list_media`, `download`, `download_batch`, `rate_limited`.
 
-```
-toddy.wide_event event=session_authenticate duration_ms=842 outcome=ready session_dir="/home/me/.toddy/session" auth_states_visited=[:wait_tdlib_parameters, :wait_encryption_key, :wait_phone_number, :wait_code, :ready] auth_step_failures=[]
+OpenTelemetry spans are the *sole* emission mechanism — Toddy does not use
+`Logger` for this. To see them, your application needs the full `opentelemetry`
+SDK and an exporter configured (Toddy only depends on the API package, so this
+is your choice, same as any other OTel-instrumented dependency):
 
-toddy.wide_event event=download duration_ms=1204 outcome=completed remote_file_id="AgAC..." destination_path="./tmp/downloads/photo.jpg" bytes=482913 retries_used=0
+```elixir
+# in your application's deps
+{:opentelemetry, "~> 1.5"}
 
-toddy.wide_event event=download_batch duration_ms=15302 outcome=partial_failure total=12 completed=11 failed=1 group_by=date
+# in your application's config — otel_exporter_stdout ships with :opentelemetry
+# itself and is enough to see spans locally; swap in {:opentelemetry_exporter, ...}
+# and the OTLP exporter for a real backend.
+config :opentelemetry,
+  traces_exporter: {:otel_exporter_stdout, []}
 ```
 
 ## Development

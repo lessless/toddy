@@ -1,13 +1,14 @@
 <!--
 Sync Impact Report
-- Version change: 1.2.0 → 1.3.0
-- Modified principles: none renamed or redefined
-- Added principles:
-  - VIII. Wide Events (Canonical Log Lines) (new)
-- Added sections: none (principle added within existing Core Principles section)
-- Expanded sections: Development Workflow — added a PR-justification rule enforcing
-  Principle VIII (narrow, scattered log lines for one unit-of-work instead of one
-  consolidated wide event)
+- Version change: 1.3.0 → 1.4.0
+- Modified principles:
+  - VIII. Wide Events (Canonical Log Lines) — materially expanded: wide events are now
+    emitted as OpenTelemetry spans (via `opentelemetry_api`) instead of `Logger` lines.
+    `Logger` MUST NOT be used for wide events anymore — OpenTelemetry is the sole
+    mechanism. Title/one-wide-event-per-unit-of-work intent unchanged; the emission
+    technology is a deliberate replacement, not an addition.
+- Added principles: none
+- Added sections: none
 - Removed sections: none
 - Templates requiring follow-up: none checked in this run (scope of this command is
   the constitution file only; dependent templates/commands read this file at runtime)
@@ -85,22 +86,34 @@ code, not something that belongs in the Zig layer.
 ### VIII. Wide Events (Canonical Log Lines)
 For each unit-of-work (authenticating a session, finding a group, listing a group's
 media, downloading one media item, downloading a batch), the system MUST emit exactly
-ONE consolidated, structured log event containing every relevant field collected
+ONE consolidated, structured wide event containing every relevant field collected
 during that operation (identifiers, outcome, duration, counts, failure reasons, etc.)
 — not many small scattered narrow log lines for the same operation. Domain code still
 only ever calls `Toddy.Probes` (Principle VII) — what changes is that probes MUST
 accumulate fields onto the current operation's wide event as things happen (e.g. auth
 state transitions, retries encountered) and emit a single consolidated record when the
-operation concludes, rather than logging each field as its own line immediately. Wide
-events MUST be tagged/named consistently (a fixed log message such as
-`"toddy.wide_event"` with an `event` field naming the operation) so they are trivially
-filterable as a distinct category from other log output.
+operation concludes, rather than logging each field as its own line immediately.
+
+Each wide event MUST be emitted as an OpenTelemetry span (via `opentelemetry_api` —
+the lightweight API package only; the full `opentelemetry` SDK, exporters, and
+sampling configuration remain the consuming application's choice, same reasoning as
+Principle VI keeps native dependencies minimal and Principle II keeps the public
+surface plain Elixir), with every accumulated field set as a span attribute. Where a
+field's value isn't natively a valid span attribute (e.g. a list of maps), it MUST be
+converted to one (e.g. JSON-encoded into a string) rather than silently dropped.
+`Logger` MUST NOT be used for wide events — OpenTelemetry spans are the sole mechanism,
+so a consuming application that wants to see them must configure the `opentelemetry`
+SDK and an exporter; this is a deliberate choice to have one clear, structured channel
+rather than duplicating output across two.
 Rationale: scattered narrow logs force a reader to manually reassemble what happened
 during one operation by correlating many separate lines; a single wide event per
 unit-of-work makes each operation queryable and diffable as one record, which is what
 actually makes rare-condition debugging and cross-operation comparison tractable (see
 Jeremy Morrell, "A Practitioner's Guide to Wide Events",
-https://jeremymorrell.dev/blog/a-practitioners-guide-to-wide-events/).
+https://jeremymorrell.dev/blog/a-practitioners-guide-to-wide-events/, whose own
+reference implementation is built on spans, not raw log lines — using OpenTelemetry
+directly instead of reimplementing a parallel, weaker version of the same idea on top
+of `Logger`).
 
 ## Technology & Native Dependencies
 
@@ -148,4 +161,4 @@ Versioning policy (semantic versioning applied to this document):
 Compliance is reviewed at each PR touching the FFI boundary, native build configuration,
 or the public API, and revisited whenever TDLib is upgraded to a new pinned version.
 
-**Version**: 1.3.0 | **Ratified**: 2026-08-21 | **Last Amended**: 2026-08-22
+**Version**: 1.4.0 | **Ratified**: 2026-08-21 | **Last Amended**: 2026-08-23

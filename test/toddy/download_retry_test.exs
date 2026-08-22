@@ -6,7 +6,7 @@ defmodule Toddy.DownloadRetryTest do
   """
   use ExUnit.Case, async: false
   import Mox
-  import ExUnit.CaptureLog
+  import Toddy.SpanCase
 
   alias Toddy.Download
   alias Toddy.MediaItem
@@ -111,15 +111,15 @@ defmodule Toddy.DownloadRetryTest do
 
     destination = Path.join(dir, "photo.jpg")
 
-    log =
-      capture_log(fn ->
+    [span] =
+      capture_spans(fn ->
         assert {:ok, %Download{status: :failed, error: {:tdlib_error, _msg}}} =
                  Download.fetch(session, message(), destination)
       end)
 
-    assert log =~ "toddy.wide_event event=download"
-    assert log =~ "outcome=failed"
-    assert log =~ "retries_used=3"
+    assert span.name == :download
+    assert span.attributes[:outcome] == :failed
+    assert span.attributes[:retries_used] == 3
     refute File.exists?(destination)
   end
 

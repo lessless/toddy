@@ -46,7 +46,7 @@ manual intervention or redesign.
 
 **Constraints**: Zig code limited to marshaling across the 5 `td_json_client` C
 functions (Principle VI); every blocking TDLib call runs on a dirty scheduler
-(Principle I); domain modules never call `Logger`/telemetry directly, only
+(Principle I); domain modules never call OpenTelemetry/telemetry directly, only
 `Toddy.Probes` (Principle VII); session files `0600`/`0700` (FR-002); TDLib flood-wait
 responses are waited out automatically, not treated as failures (FR-013).
 

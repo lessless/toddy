@@ -25,15 +25,15 @@ defmodule Toddy.Group do
   belongs to returns `{:error, :group_not_found}`, never an empty result.
   """
   def find(session, identifier) do
-    started_at = Probes.start_event()
+    span_ctx = Probes.start_event(:group_find)
 
     case find_in_chat_list(session, identifier) do
       {:ok, group} ->
-        Probes.group_found(started_at, identifier, group)
+        Probes.group_found(span_ctx, identifier, group)
         {:ok, group}
 
       :error ->
-        Probes.group_not_found(started_at, identifier)
+        Probes.group_not_found(span_ctx, identifier)
         {:error, :group_not_found}
     end
   end
@@ -44,9 +44,9 @@ defmodule Toddy.Group do
   audio/voice attachment.
   """
   def list_media(session, %__MODULE__{id: chat_id}) do
-    started_at = Probes.start_event()
+    span_ctx = Probes.start_event(:group_list_media)
     {media, pages_fetched} = paginate_history(session, chat_id, 0, [], @max_history_pages, 0)
-    Probes.group_media_listed(started_at, chat_id, length(media), pages_fetched)
+    Probes.group_media_listed(span_ctx, chat_id, length(media), pages_fetched)
     {:ok, media}
   end
 

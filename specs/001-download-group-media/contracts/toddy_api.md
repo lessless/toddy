@@ -100,39 +100,44 @@ def status(download)
 
 Not called directly by library consumers — listed here because it is the sole
 observability surface `Toddy.Session`/`Toddy.Group`/`Toddy.Download` are allowed to
-call into (no direct `Logger`/telemetry calls from domain code — Principle VII), and
-because each unit-of-work below results in exactly one consolidated wide event, not
-several scattered log lines for the same operation (Principle VIII). Callers get an
-opaque timing token from `start_event/0`, accumulate their own fields as plain Elixir
-state over the course of the operation (`Toddy.Session`'s GenServer state; a local
-accumulator in `Toddy.Group`/`Toddy.Download`), and pass the complete field set to the
-matching function below once the operation concludes.
+call into (no direct OpenTelemetry/telemetry calls from domain code — Principle VII),
+and because each unit-of-work below results in exactly one consolidated wide event —
+one OpenTelemetry span, via the lightweight `opentelemetry_api` package, not several
+scattered log lines for the same operation (Principle VIII). Callers get a span
+context from `start_event/1`, accumulate their own fields as plain Elixir state over
+the course of the operation (`Toddy.Session`'s GenServer state; a local accumulator in
+`Toddy.Group`/`Toddy.Download`), and pass the complete field set to the matching
+function below once the operation concludes, which sets it all as span attributes and
+ends the span.
 
 ```elixir
-def start_event() :: integer()
+def start_event(name :: atom()) :: OpenTelemetry.span_ctx()
 
-def session_authenticated(started_at, session_dir, auth_states_visited, auth_step_failures)
-def session_closed(started_at, session_dir, auth_states_visited, auth_step_failures)
+def session_authenticated(span_ctx, session_dir, auth_states_visited, auth_step_failures)
+def session_closed(span_ctx, session_dir, auth_states_visited, auth_step_failures)
 
-def group_found(started_at, identifier, group)
-def group_not_found(started_at, identifier)
-def group_media_listed(started_at, chat_id, media_count, pages_fetched)
+def group_found(span_ctx, identifier, group)
+def group_not_found(span_ctx, identifier)
+def group_media_listed(span_ctx, chat_id, media_count, pages_fetched)
 
-def download_deduped(started_at, remote_file_id, destination_path)
-def download_completed(started_at, remote_file_id, destination_path, bytes, retries_used)
-def download_failed(started_at, remote_file_id, destination_path, reason, retries_used)
-def download_batch_completed(started_at, downloads, group_by)
+def download_deduped(span_ctx, remote_file_id, destination_path)
+def download_completed(span_ctx, remote_file_id, destination_path, bytes, retries_used)
+def download_failed(span_ctx, remote_file_id, destination_path, reason, retries_used)
+def download_batch_completed(span_ctx, downloads, group_by)
 
-def rate_limited(retry_after_seconds)  # instantaneous, no start_event needed
+def rate_limited(retry_after_seconds)  # instantaneous — starts and ends its own span
 ```
 
-Each function emits exactly one log line with the fixed message prefix
-`"toddy.wide_event"`, an `event` field naming the operation (e.g. `event=download`),
-and every other field rendered as `key=value` directly in the message text — not left
-in Logger metadata alone, since Toddy is a library and can't assume whatever consumes
-it has configured Logger to print custom metadata. `session_authenticated`/
-`session_closed` share the `session_authenticate` event name (distinguished by
-`outcome=ready` vs. `outcome=closed`) since they're two possible endings of the same
-unit-of-work, not two different ones. The exact log format is otherwise an
-implementation detail; the contract other domain modules rely on is the function
-names and arguments above.
+Each function ends exactly one span named after the unit-of-work
+(`session_authenticate`, `group_find`, `group_list_media`, `download`,
+`download_batch`, `rate_limited`), with every field set as a span attribute — a field
+that isn't natively a valid attribute (e.g. `auth_step_failures`, a list of maps) is
+JSON-encoded into a string rather than silently dropped. A failure-ish outcome
+(`:failed`, `:not_found`, `:partial_failure`) also sets an error span status.
+`session_authenticated`/`session_closed` share the `session_authenticate` span name
+(distinguished by `outcome: :ready` vs. `outcome: :closed`) since they're two possible
+endings of the same unit-of-work, not two different ones. OpenTelemetry spans are the
+sole emission mechanism — no `Logger` fallback; a consuming application must configure
+the full `opentelemetry` SDK and an exporter to see them. The exact attribute encoding
+is otherwise an implementation detail; the contract other domain modules rely on is
+the function names and arguments above.

@@ -99,7 +99,7 @@ defmodule Toddy.Session do
       pending_bodies: %{},
       fire_and_forget_extras: %{},
       subscribers: [],
-      wide_event_started_at: Probes.start_event(),
+      wide_event_span_ctx: Probes.start_event(:session_authenticate),
       auth_states_visited: [],
       auth_step_failures: []
     }
@@ -369,7 +369,7 @@ defmodule Toddy.Session do
     enforce_session_permissions(state.session_dir)
 
     Probes.session_authenticated(
-      state.wide_event_started_at,
+      state.wide_event_span_ctx,
       state.session_dir,
       Enum.reverse(state.auth_states_visited),
       Enum.reverse(state.auth_step_failures)
@@ -380,7 +380,7 @@ defmodule Toddy.Session do
 
   defp handle_auth_update(%{"@type" => "authorizationStateClosed"}, state) do
     Probes.session_closed(
-      state.wide_event_started_at,
+      state.wide_event_span_ctx,
       state.session_dir,
       Enum.reverse(state.auth_states_visited),
       Enum.reverse(state.auth_step_failures)

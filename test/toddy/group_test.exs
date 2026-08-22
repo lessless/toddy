@@ -6,7 +6,7 @@ defmodule Toddy.GroupTest do
   """
   use ExUnit.Case, async: false
   import Mox
-  import ExUnit.CaptureLog
+  import Toddy.SpanCase
 
   alias Toddy.Group
   alias Toddy.Native.Mock
@@ -96,16 +96,16 @@ defmodule Toddy.GroupTest do
       assert Group.find(session, "Random DM") == {:error, :group_not_found}
     end
 
-    test "returns :group_not_found and logs, rather than an empty result, for an unknown identifier" do
+    test "returns :group_not_found and emits a wide event, rather than an empty result, for an unknown identifier" do
       session = start_session(&chat_list_responder/1)
 
-      log =
-        capture_log(fn ->
+      [span] =
+        capture_spans(fn ->
           assert Group.find(session, "Does Not Exist") == {:error, :group_not_found}
         end)
 
-      assert log =~ "toddy.wide_event event=group_find"
-      assert log =~ "outcome=not_found"
+      assert span.name == :group_find
+      assert span.attributes[:outcome] == :not_found
     end
   end
 
@@ -169,8 +169,8 @@ defmodule Toddy.GroupTest do
 
       group = %Group{id: 20, title: "My Telegram Group"}
 
-      log =
-        capture_log(fn ->
+      [span] =
+        capture_spans(fn ->
           assert {:ok, messages} = Group.list_media(session, group)
           send(self(), {:messages, messages})
         end)
@@ -181,9 +181,9 @@ defmodule Toddy.GroupTest do
       assert Enum.map(messages, & &1.media.type) == [:photo, :document, :video]
       assert Enum.map(messages, & &1.media.remote_file_id) == ["photo-1", "doc-1", "vid-1"]
 
-      assert log =~ "toddy.wide_event event=group_list_media"
-      assert log =~ "media_count=3"
-      assert log =~ "pages_fetched=3"
+      assert span.name == :group_list_media
+      assert span.attributes[:media_count] == 3
+      assert span.attributes[:pages_fetched] == 3
       assert Enum.find(messages, &(&1.id == 98)).media.file_name == "report.pdf"
     end
 
