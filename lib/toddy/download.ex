@@ -41,11 +41,13 @@ defmodule Toddy.Download do
   outer tuple.
   """
   def fetch(session, %Message{media: %MediaItem{} = media}, destination_path) do
+    started_at = Probes.start_event()
+
     if already_downloaded?(media, destination_path) do
+      Probes.download_deduped(started_at, media.remote_file_id, destination_path)
       {:ok, completed(media, destination_path)}
     else
-      Probes.download_started(media.remote_file_id, destination_path)
-      {:ok, do_fetch(session, media, destination_path, @max_transient_retries)}
+      {:ok, do_fetch(session, media, destination_path, @max_transient_retries, started_at)}
     end
   end
 
@@ -60,13 +62,18 @@ defmodule Toddy.Download do
   into `destination_dir`. Omitting it keeps the original flat layout.
   """
   def fetch_all(session, messages, destination_dir, opts \\ []) do
+    started_at = Probes.start_event()
     group_by = Keyword.get(opts, :group_by)
 
-    Enum.map(messages, fn %Message{media: media} = message ->
-      destination_path = destination_path(destination_dir, message, media, group_by)
-      {:ok, download} = fetch(session, message, destination_path)
-      download
-    end)
+    downloads =
+      Enum.map(messages, fn %Message{media: media} = message ->
+        destination_path = destination_path(destination_dir, message, media, group_by)
+        {:ok, download} = fetch(session, message, destination_path)
+        download
+      end)
+
+    Probes.download_batch_completed(started_at, downloads, group_by)
+    downloads
   end
 
   @doc "Accessor for a `Toddy.Download`'s current status."
@@ -107,7 +114,7 @@ defmodule Toddy.Download do
   # (FR-013), which Toddy.Session already handles generically for every
   # request, this one included.
 
-  defp do_fetch(session, media, destination_path, retries_left) do
+  defp do_fetch(session, media, destination_path, retries_left, started_at) do
     request = %{
       "@type" => "downloadFile",
       "file_id" => media.file_id,
@@ -118,14 +125,14 @@ defmodule Toddy.Download do
     }
 
     response = Session.request(session, request, @download_timeout)
-    handle_response(response, session, media, destination_path, retries_left)
+    handle_response(response, session, media, destination_path, retries_left, started_at)
   catch
     :exit, _reason when retries_left > 0 ->
       Process.sleep(@retry_backoff_ms)
-      do_fetch(session, media, destination_path, retries_left - 1)
+      do_fetch(session, media, destination_path, retries_left - 1, started_at)
 
     :exit, _reason ->
-      fail(media, destination_path, :retries_exhausted)
+      fail(started_at, media, destination_path, :retries_exhausted, retries_used(retries_left))
   end
 
   defp handle_response(
@@ -136,9 +143,10 @@ defmodule Toddy.Download do
          _session,
          media,
          destination_path,
-         _retries_left
+         retries_left,
+         started_at
        ) do
-    finalize(media, destination_path, tmp_path)
+    finalize(started_at, media, destination_path, tmp_path, retries_used(retries_left))
   end
 
   defp handle_response(
@@ -146,11 +154,12 @@ defmodule Toddy.Download do
          session,
          media,
          destination_path,
-         retries_left
+         retries_left,
+         started_at
        )
        when code >= 500 and retries_left > 0 do
     Process.sleep(@retry_backoff_ms)
-    do_fetch(session, media, destination_path, retries_left - 1)
+    do_fetch(session, media, destination_path, retries_left - 1, started_at)
   end
 
   defp handle_response(
@@ -158,22 +167,31 @@ defmodule Toddy.Download do
          _session,
          media,
          destination_path,
-         _retries_left
+         retries_left,
+         started_at
        ) do
-    fail(media, destination_path, error_reason(error))
+    fail(started_at, media, destination_path, error_reason(error), retries_used(retries_left))
   end
 
-  defp handle_response(_other, _session, media, destination_path, _retries_left) do
-    fail(media, destination_path, :unexpected_response)
+  defp handle_response(_other, _session, media, destination_path, retries_left, started_at) do
+    fail(started_at, media, destination_path, :unexpected_response, retries_used(retries_left))
   end
 
-  defp finalize(media, destination_path, tmp_path) do
+  defp retries_used(retries_left), do: @max_transient_retries - retries_left
+
+  defp finalize(started_at, media, destination_path, tmp_path, retries_used) do
     File.mkdir_p!(Path.dirname(destination_path))
     expected_size = media.size
 
     with :ok <- File.cp(tmp_path, destination_path),
          {:ok, %{size: ^expected_size}} <- File.stat(destination_path) do
-      Probes.download_completed(media.remote_file_id, media.size)
+      Probes.download_completed(
+        started_at,
+        media.remote_file_id,
+        destination_path,
+        media.size,
+        retries_used
+      )
 
       %__MODULE__{
         remote_file_id: media.remote_file_id,
@@ -182,13 +200,22 @@ defmodule Toddy.Download do
         bytes_downloaded: media.size
       }
     else
-      {:ok, %{size: _mismatched_size}} -> fail(media, destination_path, :size_mismatch)
-      {:error, posix_reason} -> fail(media, destination_path, posix_reason)
+      {:ok, %{size: _mismatched_size}} ->
+        fail(started_at, media, destination_path, :size_mismatch, retries_used)
+
+      {:error, posix_reason} ->
+        fail(started_at, media, destination_path, posix_reason, retries_used)
     end
   end
 
-  defp fail(media, destination_path, reason) do
-    Probes.download_failed(media.remote_file_id, reason)
+  defp fail(started_at, media, destination_path, reason, retries_used) do
+    Probes.download_failed(
+      started_at,
+      media.remote_file_id,
+      destination_path,
+      reason,
+      retries_used
+    )
 
     %__MODULE__{
       remote_file_id: media.remote_file_id,

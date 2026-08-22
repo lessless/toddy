@@ -96,21 +96,43 @@ def status(download)
   message's post date (`message.date`) instead — an additive option, not a breaking
   change to the default.
 
-## `Toddy.Probes` (Constitution Principle VII)
+## `Toddy.Probes` (Constitution Principles VII, VIII)
 
 Not called directly by library consumers — listed here because it is the sole
 observability surface `Toddy.Session`/`Toddy.Group`/`Toddy.Download` are allowed to
-call into (no direct `Logger`/telemetry calls from domain code).
+call into (no direct `Logger`/telemetry calls from domain code — Principle VII), and
+because each unit-of-work below results in exactly one consolidated wide event, not
+several scattered log lines for the same operation (Principle VIII). Callers get an
+opaque timing token from `start_event/0`, accumulate their own fields as plain Elixir
+state over the course of the operation (`Toddy.Session`'s GenServer state; a local
+accumulator in `Toddy.Group`/`Toddy.Download`), and pass the complete field set to the
+matching function below once the operation concludes.
 
 ```elixir
-def session_authenticated(session_dir)
-def group_not_found(identifier)
-def download_started(remote_file_id, destination_path)
-def download_completed(remote_file_id, bytes)
-def download_failed(remote_file_id, reason)
-def rate_limited(retry_after_seconds)
+def start_event() :: integer()
+
+def session_authenticated(started_at, session_dir, auth_states_visited, auth_step_failures)
+def session_closed(started_at, session_dir, auth_states_visited, auth_step_failures)
+
+def group_found(started_at, identifier, group)
+def group_not_found(started_at, identifier)
+def group_media_listed(started_at, chat_id, media_count, pages_fetched)
+
+def download_deduped(started_at, remote_file_id, destination_path)
+def download_completed(started_at, remote_file_id, destination_path, bytes, retries_used)
+def download_failed(started_at, remote_file_id, destination_path, reason, retries_used)
+def download_batch_completed(started_at, downloads, group_by)
+
+def rate_limited(retry_after_seconds)  # instantaneous, no start_event needed
 ```
 
-Each probe function's implementation (what it actually logs/emits) is an
+Each function emits exactly one log line with the fixed message prefix
+`"toddy.wide_event"`, an `event` field naming the operation (e.g. `event=download`),
+and every other field rendered as `key=value` directly in the message text — not left
+in Logger metadata alone, since Toddy is a library and can't assume whatever consumes
+it has configured Logger to print custom metadata. `session_authenticated`/
+`session_closed` share the `session_authenticate` event name (distinguished by
+`outcome=ready` vs. `outcome=closed`) since they're two possible endings of the same
+unit-of-work, not two different ones. The exact log format is otherwise an
 implementation detail; the contract other domain modules rely on is the function
 names and arguments above.

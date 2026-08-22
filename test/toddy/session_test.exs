@@ -96,7 +96,10 @@ defmodule Toddy.SessionTest do
       end)
 
     assert Session.status(session) == :ready
-    assert log =~ "toddy.session_authenticated"
+    assert log =~ "toddy.wide_event event=session_authenticate"
+    assert log =~ "outcome=ready"
+    assert log =~ "authorizationStateWaitCode"
+    assert log =~ "authorizationStateWaitPassword"
     assert File.stat!(Path.join(dir, "fake_session.db")).mode |> rem(0o1000) == 0o600
   end
 
@@ -152,5 +155,92 @@ defmodule Toddy.SessionTest do
     Process.sleep(20)
 
     assert Session.status(session) == :ready
+  end
+
+  test "a fire-and-forget failure during the handshake is folded into the final wide event" do
+    dir = session_dir()
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    Mock
+    |> stub(:create, fn -> make_ref() end)
+    |> stub(:send, fn _handle, payload ->
+      decoded = Jason.decode!(payload)
+
+      if decoded["@type"] == "setTdlibParameters" do
+        send(
+          self(),
+          {:td_message,
+           Jason.encode!(%{
+             "@type" => "error",
+             "code" => 400,
+             "message" => "boom",
+             "@extra" => decoded["@extra"]
+           })}
+        )
+      end
+
+      :ok
+    end)
+    |> stub(:receive, fn _handle, _timeout ->
+      Process.sleep(5)
+      nil
+    end)
+
+    {:ok, session} =
+      Session.start_link(
+        phone_number: "+15550000000",
+        session_dir: dir,
+        api_id: 1,
+        api_hash: "hash",
+        native: Mock
+      )
+
+    push(session, auth_update("authorizationStateWaitTdlibParameters"))
+    Process.sleep(20)
+
+    log =
+      capture_log(fn ->
+        push(session, auth_update("authorizationStateReady"))
+        Process.sleep(20)
+      end)
+
+    assert log =~ "toddy.wide_event event=session_authenticate"
+    assert log =~ "outcome=ready"
+    assert log =~ ~s(request_type: "setTdlibParameters")
+    assert log =~ "code: 400"
+    assert log =~ ~s(message: "boom")
+  end
+
+  test "reaching :closed without ever becoming :ready is its own wide-event outcome" do
+    dir = session_dir()
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    Mock
+    |> stub(:create, fn -> make_ref() end)
+    |> stub(:send, fn _handle, _payload -> :ok end)
+    |> stub(:receive, fn _handle, _timeout ->
+      Process.sleep(5)
+      nil
+    end)
+
+    {:ok, session} =
+      Session.start_link(
+        phone_number: "+15550000000",
+        session_dir: dir,
+        api_id: 1,
+        api_hash: "hash",
+        native: Mock
+      )
+
+    log =
+      capture_log(fn ->
+        push(session, auth_update("authorizationStateWaitCode"))
+        push(session, auth_update("authorizationStateClosed"))
+        Process.sleep(20)
+      end)
+
+    assert Session.status(session) == :closed
+    assert log =~ "toddy.wide_event event=session_authenticate"
+    assert log =~ "outcome=closed"
   end
 end

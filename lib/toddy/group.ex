@@ -25,12 +25,15 @@ defmodule Toddy.Group do
   belongs to returns `{:error, :group_not_found}`, never an empty result.
   """
   def find(session, identifier) do
+    started_at = Probes.start_event()
+
     case find_in_chat_list(session, identifier) do
       {:ok, group} ->
+        Probes.group_found(started_at, identifier, group)
         {:ok, group}
 
       :error ->
-        Probes.group_not_found(identifier)
+        Probes.group_not_found(started_at, identifier)
         {:error, :group_not_found}
     end
   end
@@ -41,7 +44,10 @@ defmodule Toddy.Group do
   audio/voice attachment.
   """
   def list_media(session, %__MODULE__{id: chat_id}) do
-    {:ok, paginate_history(session, chat_id, 0, [], @max_history_pages)}
+    started_at = Probes.start_event()
+    {media, pages_fetched} = paginate_history(session, chat_id, 0, [], @max_history_pages, 0)
+    Probes.group_media_listed(started_at, chat_id, length(media), pages_fetched)
+    {:ok, media}
   end
 
   # Internal: group resolution, scoped to the account's own chat list so
@@ -88,9 +94,10 @@ defmodule Toddy.Group do
 
   defp to_group(%{"id" => id, "title" => title}), do: %__MODULE__{id: id, title: title}
 
-  defp paginate_history(_session, _chat_id, _from_id, acc, 0), do: acc
+  defp paginate_history(_session, _chat_id, _from_id, acc, 0, pages_fetched),
+    do: {acc, pages_fetched}
 
-  defp paginate_history(session, chat_id, from_message_id, acc, pages_left) do
+  defp paginate_history(session, chat_id, from_message_id, acc, pages_left, pages_fetched) do
     request = %{
       "@type" => "getChatHistory",
       "chat_id" => chat_id,
@@ -100,9 +107,11 @@ defmodule Toddy.Group do
       "only_local" => false
     }
 
+    pages_fetched = pages_fetched + 1
+
     case Session.request(session, request) do
       %{"@type" => "messages", "messages" => []} ->
-        acc
+        {acc, pages_fetched}
 
       %{"@type" => "messages", "messages" => raw_messages} ->
         media_messages =
@@ -111,10 +120,18 @@ defmodule Toddy.Group do
           |> Enum.filter(& &1.media)
 
         last_id = raw_messages |> List.last() |> Map.fetch!("id")
-        paginate_history(session, chat_id, last_id, acc ++ media_messages, pages_left - 1)
+
+        paginate_history(
+          session,
+          chat_id,
+          last_id,
+          acc ++ media_messages,
+          pages_left - 1,
+          pages_fetched
+        )
 
       _other ->
-        acc
+        {acc, pages_fetched}
     end
   end
 

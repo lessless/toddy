@@ -104,7 +104,8 @@ defmodule Toddy.GroupTest do
           assert Group.find(session, "Does Not Exist") == {:error, :group_not_found}
         end)
 
-      assert log =~ "toddy.group_not_found"
+      assert log =~ "toddy.wide_event event=group_find"
+      assert log =~ "outcome=not_found"
     end
   end
 
@@ -167,11 +168,22 @@ defmodule Toddy.GroupTest do
         end)
 
       group = %Group{id: 20, title: "My Telegram Group"}
-      assert {:ok, messages} = Group.list_media(session, group)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, messages} = Group.list_media(session, group)
+          send(self(), {:messages, messages})
+        end)
+
+      assert_received {:messages, messages}
 
       assert Enum.map(messages, & &1.id) == [99, 98, 97]
       assert Enum.map(messages, & &1.media.type) == [:photo, :document, :video]
       assert Enum.map(messages, & &1.media.remote_file_id) == ["photo-1", "doc-1", "vid-1"]
+
+      assert log =~ "toddy.wide_event event=group_list_media"
+      assert log =~ "media_count=3"
+      assert log =~ "pages_fetched=3"
       assert Enum.find(messages, &(&1.id == 98)).media.file_name == "report.pdf"
     end
 

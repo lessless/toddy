@@ -153,6 +153,23 @@ Downloads are deduplicated by TDLib's remote file ID, verified by size on
 completion, automatically retried on transient failures, and automatically wait
 out Telegram's flood-wait rate limiting rather than failing.
 
+## Observability
+
+Every operation (authenticate, find a group, list its media, download one file,
+download a batch) emits exactly one consolidated log line — a
+["wide event"](https://jeremymorrell.dev/blog/a-practitioners-guide-to-wide-events/)
+— rather than several scattered ones, at `Logger.info`/`Logger.warning` depending on
+outcome. All of them start with `toddy.wide_event`, so they're one `grep` away from
+the rest of your application's logs:
+
+```
+toddy.wide_event event=session_authenticate duration_ms=842 outcome=ready session_dir="/home/me/.toddy/session" auth_states_visited=[:wait_tdlib_parameters, :wait_encryption_key, :wait_phone_number, :wait_code, :ready] auth_step_failures=[]
+
+toddy.wide_event event=download duration_ms=1204 outcome=completed remote_file_id="AgAC..." destination_path="./tmp/downloads/photo.jpg" bytes=482913 retries_used=0
+
+toddy.wide_event event=download_batch duration_ms=15302 outcome=partial_failure total=12 completed=11 failed=1 group_by=date
+```
+
 ## Development
 
 - `mix test` — unit tests (mocked TDLib responses, no native dependency needed).

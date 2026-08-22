@@ -117,7 +117,9 @@ defmodule Toddy.DownloadRetryTest do
                  Download.fetch(session, message(), destination)
       end)
 
-    assert log =~ "toddy.download_failed"
+    assert log =~ "toddy.wide_event event=download"
+    assert log =~ "outcome=failed"
+    assert log =~ "retries_used=3"
     refute File.exists?(destination)
   end
 

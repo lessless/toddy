@@ -98,7 +98,10 @@ defmodule Toddy.Session do
       pending_requests: %{},
       pending_bodies: %{},
       fire_and_forget_extras: %{},
-      subscribers: []
+      subscribers: [],
+      wide_event_started_at: Probes.start_event(),
+      auth_states_visited: [],
+      auth_step_failures: []
     }
 
     {:ok, state, {:continue, :start_receiver}}
@@ -240,8 +243,15 @@ defmodule Toddy.Session do
          state
        ) do
     request_type = state.fire_and_forget_extras[extra]
-    Probes.auth_step_failed(request_type, code, message)
-    {:noreply, %{state | fire_and_forget_extras: Map.delete(state.fire_and_forget_extras, extra)}}
+    failure = %{request_type: request_type, code: code, message: message}
+
+    state = %{
+      state
+      | fire_and_forget_extras: Map.delete(state.fire_and_forget_extras, extra),
+        auth_step_failures: [failure | state.auth_step_failures]
+    }
+
+    {:noreply, state}
   end
 
   defp handle_fire_and_forget_response(extra, _decoded, state) do
@@ -300,7 +310,7 @@ defmodule Toddy.Session do
          },
          state
        ) do
-    Probes.auth_state_changed(type)
+    state = %{state | auth_states_visited: [type | state.auth_states_visited]}
     handle_auth_update(auth, state)
   end
 
@@ -357,11 +367,25 @@ defmodule Toddy.Session do
 
   defp handle_auth_update(%{"@type" => "authorizationStateReady"}, state) do
     enforce_session_permissions(state.session_dir)
-    Probes.session_authenticated(state.session_dir)
+
+    Probes.session_authenticated(
+      state.wide_event_started_at,
+      state.session_dir,
+      Enum.reverse(state.auth_states_visited),
+      Enum.reverse(state.auth_step_failures)
+    )
+
     {:noreply, %{state | auth_state: :ready}}
   end
 
   defp handle_auth_update(%{"@type" => "authorizationStateClosed"}, state) do
+    Probes.session_closed(
+      state.wide_event_started_at,
+      state.session_dir,
+      Enum.reverse(state.auth_states_visited),
+      Enum.reverse(state.auth_step_failures)
+    )
+
     {:noreply, %{state | auth_state: :closed}}
   end
 
