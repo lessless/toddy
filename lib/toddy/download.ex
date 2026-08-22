@@ -54,10 +54,16 @@ defmodule Toddy.Download do
   `destination_dir` (named after `file_name`, falling back to
   `remote_file_id`), continuing past individual failures rather than
   aborting the batch (FR-010, FR-011).
+
+  Pass `group_by: :date` to write each file into a `dd-mm-yyyy` subfolder
+  named after that message's post date (`message.date`) instead of flat
+  into `destination_dir`. Omitting it keeps the original flat layout.
   """
-  def fetch_all(session, messages, destination_dir) do
+  def fetch_all(session, messages, destination_dir, opts \\ []) do
+    group_by = Keyword.get(opts, :group_by)
+
     Enum.map(messages, fn %Message{media: media} = message ->
-      destination_path = Path.join(destination_dir, media.file_name || media.remote_file_id)
+      destination_path = destination_path(destination_dir, message, media, group_by)
       {:ok, download} = fetch(session, message, destination_path)
       download
     end)
@@ -65,6 +71,16 @@ defmodule Toddy.Download do
 
   @doc "Accessor for a `Toddy.Download`'s current status."
   def status(%__MODULE__{status: status}), do: status
+
+  defp destination_path(destination_dir, message, media, :date) do
+    Path.join([destination_dir, Calendar.strftime(message.date, "%d-%m-%Y"), filename(media)])
+  end
+
+  defp destination_path(destination_dir, _message, media, _group_by) do
+    Path.join(destination_dir, filename(media))
+  end
+
+  defp filename(media), do: media.file_name || media.remote_file_id
 
   # Internal: dedup, keyed on (remote_file_id, destination_path) per FR-007 —
   # the destination file's own presence/size is the dedup record, so this is

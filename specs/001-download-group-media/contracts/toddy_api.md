@@ -72,9 +72,10 @@ def fetch(session, message, destination_path)
 @spec fetch_all(
         session :: GenServer.server(),
         messages :: [Toddy.Message.t()],
-        destination_dir :: String.t()
+        destination_dir :: String.t(),
+        opts :: [group_by: :date]
       ) :: [Toddy.Download.t()]
-def fetch_all(session, messages, destination_dir)
+def fetch_all(session, messages, destination_dir, opts \\ [])
 
 @spec status(download :: Toddy.Download.t()) ::
         :pending | :in_progress | :completed | :failed
@@ -87,10 +88,13 @@ def status(download)
 - `fetch/3` called again for a `message` whose media was already fully downloaded to
   the same `destination_path` returns the existing `:completed` `Toddy.Download`
   immediately, without re-downloading (FR-007, SC-006).
-- `fetch_all/3` is the batch entry point for US3: it drives `fetch/3` for each message
+- `fetch_all/4` is the batch entry point for US3: it drives `fetch/3` for each message
   and returns every resulting `Toddy.Download`, mixing `:completed` and `:failed`
   entries rather than aborting the batch on the first failure (US3 acceptance scenario
-  4, FR-010, FR-011).
+  4, FR-010, FR-011). Default layout is flat inside `destination_dir`; passing
+  `group_by: :date` writes each file into a `dd-mm-yyyy` subfolder named after that
+  message's post date (`message.date`) instead — an additive option, not a breaking
+  change to the default.
 
 ## `Toddy.Probes` (Constitution Principle VII)
 

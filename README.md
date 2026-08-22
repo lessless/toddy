@@ -21,6 +21,8 @@ brew install tdlib --HEAD
 
 # Debian/Ubuntu — no official package; build from source and ensure the
 # resulting libtdjson.pc is on PKG_CONFIG_PATH. See https://github.com/tdlib/td#building
+
+# FreeBSD — also no package; build from source (see the FreeBSD section below)
 ```
 
 > [!WARNING]
@@ -41,6 +43,39 @@ Verify it's discoverable:
 ```sh
 pkg-config --modversion tdjson
 ```
+
+<details>
+<summary><strong>Building on FreeBSD</strong> (untested by this project — macOS above is the
+platform actually verified this session; adapt as needed)</summary>
+
+```sh
+# Build deps. openssl/zlib ship in the base system; these are the rest.
+pkg install cmake gperf pkgconf git
+
+git clone https://github.com/tdlib/td.git /tmp/td
+git -C /tmp/td checkout 022d60202e446ad1287b9fb68e687c8a0760788b  # see warning above
+cmake -S /tmp/td -B /tmp/td/build -DCMAKE_BUILD_TYPE=Release -DTD_ENABLE_LTO=OFF
+cmake --build /tmp/td/build --target tdjson -- -j$(sysctl -n hw.ncpu)
+cmake --install /tmp/td/build   # defaults to /usr/local, already on pkg-config's search path
+
+# If pkg-config still can't find it, the linker's shared-library cache may
+# need refreshing (a fresh install to /usr/local/lib is often not picked up
+# until this runs):
+ldconfig -m /usr/local/lib
+```
+
+Zigler's own README lists FreeBSD as a supported target ("tested, but not
+subjected to CI"), and Zig ships official FreeBSD (x86_64/aarch64) binaries at
+<https://ziglang.org/download/>, so `mix zig.get` (see below) should work
+unmodified. Elixir/Erlang: `pkg install elixir` pulls in `erlang` as a
+dependency, though the packaged versions can lag — if you need to match this
+project's pinned `.tool-versions` (Elixir 1.20.2 / OTP 29) exactly, building
+`lang/erlang` and `lang/elixir` from ports gets you a specific version. `mise`
+(used elsewhere in this README for fnox) doesn't have a confirmed official
+FreeBSD binary as of this writing — `pkg install rust && cargo install mise`
+would likely work but is unverified; native `pkg`/ports is the safer bet here.
+
+</details>
 
 ### 2. Zig toolchain
 
@@ -108,6 +143,10 @@ is created `0700` and TDLib's session files are kept `0600`.
 
 ```elixir
 downloads = Toddy.Download.fetch_all(session, media_messages, "./tmp/downloads")
+
+# Or, organized into dd-mm-yyyy folders by the date each message was posted:
+downloads = Toddy.Download.fetch_all(session, media_messages, "./tmp/downloads", group_by: :date)
+# => ./tmp/downloads/21-08-2026/photo.jpg
 ```
 
 Downloads are deduplicated by TDLib's remote file ID, verified by size on
