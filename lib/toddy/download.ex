@@ -87,7 +87,11 @@ defmodule Toddy.Download do
     Path.join(destination_dir, filename(media))
   end
 
-  defp filename(media), do: media.file_name || media.remote_file_id
+  # TDLib sends "" (not omitted/null) for file_name on videos recorded
+  # directly in-app, so a nil-only `||` isn't enough to fall back to
+  # remote_file_id.
+  defp filename(%{file_name: name} = media) when name in [nil, ""], do: media.remote_file_id
+  defp filename(media), do: media.file_name
 
   # Internal: dedup, keyed on (remote_file_id, destination_path) per FR-007 —
   # the destination file's own presence/size is the dedup record, so this is

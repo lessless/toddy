@@ -109,4 +109,21 @@ defmodule Toddy.DownloadGroupByTest do
 
     assert download.destination_path == Path.join(dir, "photo.jpg")
   end
+
+  test "a media item with an empty (not nil) file_name — as TDLib sends for in-app-recorded videos — falls back to remote_file_id, instead of colliding with its own date folder",
+       %{dir: dir} do
+    session = start_session(dir)
+    posted_at = DateTime.new!(~D[2026-08-01], ~T[10:00:00], "Etc/UTC")
+
+    msg1 = message(1, posted_at, "unique-1", "")
+    msg2 = message(2, posted_at, "unique-2", "clip.mp4")
+
+    [d1, d2] = Download.fetch_all(session, [msg1, msg2], dir, group_by: :date)
+
+    assert d1.status == :completed
+    assert d1.destination_path == Path.join([dir, "01-08-2026", "unique-1"])
+
+    assert d2.status == :completed
+    assert d2.destination_path == Path.join([dir, "01-08-2026", "clip.mp4"])
+  end
 end
